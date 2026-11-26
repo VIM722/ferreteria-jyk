@@ -321,7 +321,8 @@ function refreshCart(focus) {
   document.querySelector('#sale-products').innerHTML = productList(input.value)
   if (focus?.id) {
     const candidate = [...main.querySelectorAll('[data-action][data-id]')].find(item => item.dataset.action === focus.action && item.dataset.id === focus.id && !item.disabled)
-    ;(candidate || input).focus({ preventScroll: true })
+    const nextFocus = candidate || input
+    nextFocus.focus({ preventScroll: true })
   }
 }
 function changeCart(action, id, source) {
@@ -526,10 +527,18 @@ function historyNavigation(path) {
   window.history.pushState(null,'',path)
 }
 document.addEventListener('input', event => {
-  const { id, value } = event.target
+  const { id, value, dataset } = event.target
   if (id === 'inventory-search') document.querySelector('#inventory-rows').innerHTML = inventoryRows()
   if (id === 'sale-search') document.querySelector('#sale-products').innerHTML = productList(value)
   if (id === 'global-search') document.querySelector('#search-results').innerHTML = productList(value,'global')
+  if (dataset.discount) {
+    const entry = state.cart.get(Number(dataset.discount))
+    const discount = Math.round(Number(value || 0) * 100)
+    entry.descuento = Math.max(0,Math.min(entry.precio * entry.cantidad,discount))
+    state.saleToken = null
+    document.querySelector('#cart .total-row span:last-child').textContent = money(
+      [...state.cart.values()].reduce((sum,p) => sum + p.precio*p.cantidad-p.descuento,0))
+  }
 })
 document.addEventListener('change', event => {
   const { id, value, dataset } = event.target
@@ -542,11 +551,7 @@ document.addEventListener('change', event => {
   if (id === 'receipt-kind') updateDocument()
   if (dataset.discount) {
     const entry = state.cart.get(Number(dataset.discount))
-    entry.descuento = Math.max(0,Math.min(entry.precio*entry.cantidad,Math.round(Number(value)*100)))
-    state.saleToken = null
-    event.target.value = currencyInput(entry.descuento)
-    document.querySelector('#cart .total-row span:last-child').textContent = money(
-      [...state.cart.values()].reduce((sum,p) => sum + p.precio*p.cantidad-p.descuento,0))
+    if (entry) event.target.value = currencyInput(entry.descuento)
   }
 })
 document.addEventListener('keydown', event => {
