@@ -1,0 +1,7 @@
+dist/
+.sites/
+.data/
+node_modules/
+.env*
+*.tar.gz
+*.pdf
