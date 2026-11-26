@@ -36,7 +36,7 @@ const line = (product, cantidad = 1, descuento = 0) => ({ id: product.id, precio
 
 test('registra el carrito, descuenta stock y devuelve el mismo comprobante ante un reintento', async t => {
   const { as } = await fixture(t)
-  const seller = await as('vendedor')
+  const seller = await as('vendedor1')
   const catalog = await seller('catalogo')
   assert.equal(catalog.status,200)
   const [first,second] = catalog.data.productos
@@ -57,7 +57,7 @@ test('registra el carrito, descuenta stock y devuelve el mismo comprobante ante 
 
 test('revierte una venta de varias partidas si una excede el stock', async t => {
   const { as } = await fixture(t)
-  const seller = await as('vendedor')
+  const seller = await as('vendedor1')
   const catalog = (await seller('catalogo')).data
   const [first,second] = catalog.productos
   const failure = await seller('ventas','POST',sale([line(first),line(second,second.stock+1)]))
@@ -69,8 +69,8 @@ test('revierte una venta de varias partidas si una excede el stock', async t => 
 
 test('registra ingreso y baja, actualiza el costo promedio y rechaza una baja mayor al saldo', async t => {
   const { as } = await fixture(t)
-  const warehouse = await as('almacenero')
-  const owner = await as('dueno')
+  const warehouse = await as('almacenero1')
+  const owner = await as('dueno1')
   const { productos, proveedores } = (await warehouse('catalogo')).data
   const p = productos[0]
   const supplier = proveedores[0]
@@ -92,7 +92,7 @@ test('el acceso público usa credenciales propias y protege la API, los roles y 
   for (const path of ['catalogo','ventas','movimientos','panel','usuarios','actividad']) {
     assert.equal((await fetch(path)).status,401)
   }
-  const credentials = JSON.stringify({usuario:'vendedor',clave:testPassword})
+  const credentials = JSON.stringify({usuario:'vendedor1',clave:testPassword})
   let response = await fetch('login',{
     method:'POST', headers:{'Content-Type':'application/json',Origin:'https://otro.example'}, body:credentials,
   })
@@ -114,11 +114,11 @@ test('el acceso público usa credenciales propias y protege la API, los roles y 
 test('la API aplica la matriz de permisos y limita los datos que entrega por rol', async t => {
   const { db,as } = await fixture(t)
   assert.equal((await request(db,'ventas')).status,401)
-  assert.equal((await request(db,'login','POST',{usuario:'vendedor',clave:'incorrecta'})).status,401)
-  const seller = await as('vendedor')
-  const warehouse = await as('almacenero')
-  const owner = await as('dueno')
-  const admin = await as('admin')
+  assert.equal((await request(db,'login','POST',{usuario:'vendedor1',clave:'incorrecta'})).status,401)
+  const seller = await as('vendedor1')
+  const warehouse = await as('almacenero1')
+  const owner = await as('dueno1')
+  const admin = await as('administrador1')
   assert.equal((await seller('ventas')).status,200)
   assert.equal((await seller('movimientos')).status,403)
   assert.equal((await seller('panel')).status,403)
@@ -149,13 +149,17 @@ test('la API aplica la matriz de permisos y limita los datos que entrega por rol
 
 test('el administrador puede crear, editar y desactivar cuentas y revoca sus sesiones', async t => {
   const { db,as } = await fixture(t)
-  const admin = await as('admin')
+  const admin = await as('administrador1')
   const account = { usuario:'pruebas',nombre:'Cuenta de prueba',rol:'vendedor',activo:true,clave:testPassword }
   assert.equal((await admin('usuarios','POST',account)).status,201)
   const existing = (await admin('usuarios')).data.find(row => row.usuario === account.usuario)
   assert.equal('clave_hash' in existing,false)
   const other = await as(account.usuario)
   assert.equal((await other('ventas')).status,200)
+  const renamed = await admin('usuarios/' + existing.id,'PUT',{ ...account,nombre:'Otra cuenta',clave:'' })
+  assert.equal(renamed.status,200)
+  assert.equal(renamed.data.nombre,'Otra cuenta')
+  assert.equal((await other('sesion')).data.nombre,'Otra cuenta')
   assert.equal((await admin('usuarios/' + existing.id,'PUT',{ ...account,rol:'almacenero',clave:'' })).status,200)
   assert.equal((await other('sesion')).status,401)
   const changed = await as(account.usuario)
@@ -168,6 +172,27 @@ test('el administrador puede crear, editar y desactivar cuentas y revoca sus ses
   assert.equal((await admin('usuarios/' + me.id,'PUT',{ ...me,activo:false,clave:'' })).status,409)
   assert.equal((await admin('logout','POST',{})).status,200)
   assert.equal((await admin('sesion')).status,401)
+})
+
+test('el administrador conserva su sesión al editar su nombre visible y vuelve a entrar tras cambiar su usuario', async t => {
+  const { as } = await fixture(t)
+  const admin = await as('administrador1')
+  const me = (await admin('sesion')).data
+  const edited = { ...me,nombre:'Administrador JyK',activo:true,clave:'' }
+  const named = await admin('usuarios/' + me.id,'PUT',edited)
+  assert.equal(named.status,200)
+  assert.equal(named.data.requiereReingreso,false)
+  assert.equal((await admin('sesion')).data.nombre,edited.nombre)
+  assert.equal((await admin('usuarios')).data.find(user => user.id === me.id).nombre,edited.nombre)
+
+  const username = 'admin-jyk'
+  const renamed = await admin('usuarios/' + me.id,'PUT',{ ...edited,usuario:username })
+  assert.equal(renamed.status,200)
+  assert.equal(renamed.data.usuario,username)
+  assert.equal(renamed.data.requiereReingreso,true)
+  assert.equal((await admin('sesion')).status,401)
+  const signedAgain = await as(username)
+  assert.equal((await signedAgain('sesion')).data.id,me.id)
 })
 
 test('la migración conserva ventas anteriores y asigna las de demostración al vendedor inicial', async () => {
@@ -186,7 +211,7 @@ test('la migración conserva ventas anteriores y asigna las de demostración al 
     try {
       await provisionarUsuarios(db)
       const rows = db.prepare('SELECT v.total,u.usuario FROM ventas v LEFT JOIN usuarios u ON u.id=v.usuario_id ORDER BY v.id').all().results
-      assert.deepEqual(rows.map(row => [row.total,row.usuario]),[[1500,'vendedor'],[2800,null]])
+      assert.deepEqual(rows.map(row => [row.total,row.usuario]),[[1500,'vendedor1'],[2800,null]])
     } finally {
       db.close()
     }
@@ -198,9 +223,9 @@ test('la migración conserva ventas anteriores y asigna las de demostración al 
 
 test('el asistente usa los datos activos, calcula reposición y recomienda pares recurrentes', async t => {
   const { as } = await fixture(t)
-  const owner = await as('dueno')
-  const seller = await as('ventas2')
-  const warehouse = await as('almacen2')
+  const owner = await as('dueno1')
+  const seller = await as('vendedor2')
+  const warehouse = await as('almacenero2')
   assert.equal((await seller('sesion')).data.rol,'vendedor')
   assert.equal((await warehouse('sesion')).data.rol,'almacenero')
   assert.equal((await seller('asistente','POST',{mensaje:'Más vendidos'})).status,403)
@@ -221,7 +246,7 @@ test('el asistente usa los datos activos, calcula reposición y recomienda pares
   }
   const sales = (await seller('ventas')).data
   assert.equal(sales.total,2)
-  const firstSeller = await as('vendedor')
+  const firstSeller = await as('vendedor1')
   assert.equal((await firstSeller('ventas/' + sales.filas[0].id)).status,404)
   const real = (await owner('asistente','POST',{mensaje:'Más vendidos, reposición y promociones en los últimos 7 días',horizonte:60})).data
   assert.equal(real.periodo.demo,false)
@@ -243,7 +268,7 @@ test('el asistente usa los datos activos, calcula reposición y recomienda pares
 
 test('el catálogo ampliado conserva SKUs existentes y no crea ventas de ejemplo con actividad operativa previa', async t => {
   const { db,as } = await fixture(t)
-  const owner = await as('dueno')
+  const owner = await as('dueno1')
   db.prepare("INSERT INTO configuracion VALUES ('demo')").run()
   db.prepare("INSERT INTO productos(sku,nombre,categoria,precio,costo,minimo) VALUES ('FIJ-101','Producto previo','Fijaciones',2200,1800,2)").run()
   db.prepare("INSERT INTO ventas(solicitud,fecha,cliente,documento,tipo,pago) VALUES ('anterior','2026-11-26','Cliente anterior','','Boleta','Efectivo')").run()

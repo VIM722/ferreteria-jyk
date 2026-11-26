@@ -1,5 +1,7 @@
 import { all, now, q } from './http.js'
 
+const demoSeller = "(SELECT id FROM usuarios WHERE rol='vendedor' ORDER BY (usuario='vendedor1') DESC,id LIMIT 1)"
+
 export async function prepararDemo(db) {
   if (await db.prepare("SELECT clave FROM configuracion WHERE clave = 'demo'").first()) return
   const data = [
@@ -43,7 +45,8 @@ export async function prepararDemo(db) {
     const dayStart = today - (6 - dayIndex) * 86400000
     const when = new Date(Math.min(now.getTime(), dayStart + (9 + index) * 3600000)).toISOString()
     const quantity = product === 1 ? 5 + index : product === 2 ? 10 : 1 + (index % 2)
-    queries.push(query("INSERT INTO ventas(id,solicitud,fecha,cliente,documento,tipo,pago,usuario_id) VALUES (?,?,?,?,?,?,?,(SELECT id FROM usuarios WHERE usuario='vendedor'))",
+    queries.push(query(`INSERT INTO ventas(id,solicitud,fecha,cliente,documento,tipo,pago,usuario_id)
+      VALUES (?,?,?,?,?,?,?,${demoSeller})`,
       sequence, 'demo-' + sequence, when, clients[sequence % clients.length], '',
       'Boleta', ['Efectivo','Yape / Plin','Tarjeta'][index % 3]))
     queries.push(query('INSERT INTO partidas VALUES (?,?,?,?,?,?,0)',
@@ -117,7 +120,7 @@ export async function prepararCatalogoAmpliado(db) {
     demoBaskets.forEach((items,index) => {
       const request = 'demo-canasta-' + (index + 1)
       queries.push(q(db,`INSERT INTO ventas(solicitud,fecha,cliente,documento,tipo,pago,usuario_id)
-        SELECT ?,?,'Cliente de demostración','','Boleta','Efectivo',(SELECT id FROM usuarios WHERE usuario='vendedor')
+        SELECT ?,?,'Cliente de demostración','','Boleta','Efectivo',${demoSeller}
         WHERE NOT EXISTS(SELECT 1 FROM ventas WHERE solicitud NOT GLOB 'demo-*')
           AND (SELECT count(*) FROM productos WHERE ${items.map(() => '(sku=? AND stock>=?)').join(' OR ')})=?`,
         request,timestamp,...items.flat(),items.length))

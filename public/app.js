@@ -89,13 +89,16 @@ function showLogin(message = '') {
   loginForm.querySelector('[type="submit"]').disabled = false
   loginForm.elements.usuario.focus()
 }
-async function enter(user, preserveRoute = false) {
+function showProfile(user) {
   state.user = user
   const letters = user.nombre.split(/\s+/).slice(0,2).map(word => word[0]).join('').toUpperCase()
   document.querySelector('#profile-name').textContent = user.nombre
   document.querySelector('#profile-role').textContent = roles[user.rol]
   document.querySelector('#profile-initials').textContent = letters
   document.querySelector('#sidebar-initials').textContent = letters
+}
+async function enter(user, preserveRoute = false) {
+  showProfile(user)
   document.querySelector('#home-link').href = '#' + homePage()
   document.querySelectorAll('.nav-group').forEach(group => {
     group.querySelectorAll('a').forEach(link => { link.hidden = !canOpen(link.hash.slice(1)) })
@@ -595,8 +598,8 @@ function userDialog(id) {
   const isSelf = account?.id === state.user.id
   openDialog(account ? 'Editar usuario' : 'Nuevo usuario',form('user-form',
     input('id',account?.id || '', 'type="hidden"')
-    + field('Nombre',input('nombre',account?.nombre,'required maxlength="100" autofocus'),true)
-    + field('Usuario',input('usuario',account?.usuario,'required minlength="3" maxlength="32" autocomplete="off" autocapitalize="none" pattern="[a-zA-Z0-9._\\-]{3,32}"'))
+    + field('Nombre visible',input('nombre',account?.nombre,'required maxlength="100" autofocus'),true)
+    + field('Usuario de acceso',input('usuario',account?.usuario,'required minlength="3" maxlength="32" autocomplete="off" autocapitalize="none" pattern="[a-zA-Z0-9._\\-]{3,32}"'))
     + field('Rol',`<select name="rol" ${isSelf ? 'disabled' : ''}>${Object.entries(roles).map(([value,label]) =>
       `<option value="${value}"${value === account?.rol ? ' selected' : ''}>${label}</option>`).join('')}</select>`)
     + field(account ? 'Nueva contraseña (opcional)' : 'Contraseña',
@@ -830,9 +833,10 @@ modal.addEventListener('cancel', event => {
 document.addEventListener('submit', async event => {
   event.preventDefault()
   const form = event.target
+  const formId = form.getAttribute('id')
   const formData = new FormData(form)
   const data = Object.fromEntries(formData)
-  if (form.id === 'login-form') {
+  if (formId === 'login-form') {
     const submit = form.querySelector('[type="submit"]')
     if (submit.disabled) return
     submit.disabled = true
@@ -852,13 +856,13 @@ document.addEventListener('submit', async event => {
     return
   }
   if (!state.user) return
-  if (form.id === 'assistant-form') {
+  if (formId === 'assistant-form') {
     if (state.assistant.pending || !data.mensaje.trim()) return
     form.reset()
     await askAssistant(data.mensaje)
     return
   }
-  if (form.id === 'sales-filters') {
+  if (formId === 'sales-filters') {
     state.salesFilters = data
     state.salesPage = 1
     await render()
@@ -872,7 +876,7 @@ document.addEventListener('submit', async event => {
   errorText.hidden = true
   const cents = key => Math.round(Number(data[key])*100)
   try {
-    if (form.id === 'payment-form') {
+    if (formId === 'payment-form') {
       state.submittingSale = true
       state.receipt = data
       state.saleToken ??= crypto.randomUUID()
@@ -884,29 +888,33 @@ document.addEventListener('submit', async event => {
       showReceipt(sale)
       notify('Venta registrada.')
     } else {
-      if (form.id === 'product-form') {
+      if (formId === 'product-form') {
         await api('productos' + (data.id ? '/' + data.id : ''),data.id ? 'PUT' : 'POST',{
           ...data, precio: cents('precio'), costo: cents('costo'), stock: Number(data.stock),
           minimo: Number(data.minimo), proveedores: formData.getAll('proveedores').map(Number),
         })
-      }
-      if (form.id === 'supplier-form') {
+      } else if (formId === 'supplier-form') {
         await api('proveedores' + (data.id ? '/' + data.id : ''),data.id ? 'PUT' : 'POST',{
           ...data, productos: formData.getAll('productos').map(Number),
         })
-      }
-      if (form.id === 'movement-form') {
+      } else if (formId === 'movement-form') {
         await api('movimientos','POST',{ ...data, id: Number(data.id), cantidad: Number(data.cantidad), costo: cents('costo'), proveedor: Number(data.proveedor) })
-      }
-      if (form.id === 'user-form') {
+      } else if (formId === 'user-form') {
         const self = Number(data.id) === state.user.id
-        await api('usuarios' + (data.id ? '/' + data.id : ''),data.id ? 'PUT' : 'POST',{
+        const saved = await api('usuarios' + (data.id ? '/' + data.id : ''),data.id ? 'PUT' : 'POST',{
           ...data, rol: self ? state.user.rol : data.rol, activo: self || data.activo === '1',
         })
-        if (self) {
-          const current = await api('sesion')
-          await enter(current,true)
+        if (saved.requiereReingreso) {
+          showLogin()
+          loginStatus.textContent = 'Cambios guardados. Ingresa con tus credenciales actualizadas.'
+          loginStatus.hidden = false
+          loginForm.elements.usuario.value = saved.usuario
+          loginForm.elements.clave.focus()
+          return
         }
+        if (self) showProfile({ ...state.user, nombre:saved.nombre })
+      } else {
+        return
       }
       modal.close()
       notify('Cambios guardados.')
@@ -918,7 +926,7 @@ document.addEventListener('submit', async event => {
   } catch (error) {
     errorText.textContent = error.message
     errorText.hidden = false
-    if (error.status === 409 && form.id === 'payment-form') {
+    if (error.status === 409 && formId === 'payment-form') {
       state.saleToken = null
       try {
         state.catalog = await api('catalogo')

@@ -14,7 +14,7 @@ Abre [http://localhost:8080](http://localhost:8080). Los registros se guardan en
 
 ## Inicio de sesión y roles
 
-El sistema crea las cuentas iniciales `vendedor`, `almacenero`, `dueno` y `admin`, además de `ventas2` y `almacen2`. Las claves de prueba se entregan al titular del proyecto. Cualquier persona con el enlace puede abrir el formulario de ingreso. Las operaciones y los datos requieren una cuenta de Ferretería JyK con el rol correspondiente.
+El sistema crea las cuentas iniciales `vendedor1`, `vendedor2`, `almacenero1`, `almacenero2`, `dueno1` y `administrador1`. Las claves iniciales se entregan al titular del proyecto. Cualquier persona con el enlace puede abrir el formulario de ingreso. Las operaciones y los datos requieren una cuenta de Ferretería JyK con el rol correspondiente.
 
 | Rol | Acceso |
 | --- | --- |
@@ -23,7 +23,7 @@ El sistema crea las cuentas iniciales `vendedor`, `almacenero`, `dueno` y `admin
 | Dueño | Panel, rentabilidad y rotación, administración de productos y proveedores, consulta de existencias y asistente. |
 | Administrador | Todos los módulos, historial completo, administración de cuentas y registro de actividad. |
 
-Desde **Usuarios**, el administrador puede crear y editar cuentas, asignar roles, restablecer contraseñas y desactivar o reactivar cuentas. Un cambio de rol, usuario, contraseña o estado invalida las sesiones anteriores de esa cuenta. Las contraseñas se almacenan como hashes con una sal individual. Las ventas históricas de demostración se asignan a `vendedor`. Las ventas anteriores sin cuenta asociada siguen disponibles para el administrador.
+Desde **Usuarios**, el administrador puede crear y editar cuentas, asignar roles, restablecer contraseñas y desactivar o reactivar cuentas. Un cambio de rol, usuario, contraseña o estado invalida las sesiones anteriores de esa cuenta. Las contraseñas se almacenan como hashes con una sal individual. Las ventas históricas de demostración se asignan a `vendedor1`. Las ventas anteriores sin cuenta asociada siguen disponibles para el administrador.
 
 ```sh
 npm test
