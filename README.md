@@ -12,6 +12,19 @@ npm run dev
 
 Abre [http://localhost:8080](http://localhost:8080). Los registros se guardan en `.data/ferreteria.sqlite` entre ejecuciones. La aplicación carga un catálogo, tres proveedores y ventas ficticias al inicializar una base nueva.
 
+## Inicio de sesión y roles
+
+El sistema crea las cuentas iniciales `vendedor`, `almacenero`, `dueno` y `admin`. Las claves de prueba se entregan al titular del proyecto. En el despliegue privado, primero se requiere acceso al Site y luego una cuenta de la aplicación.
+
+| Rol | Acceso |
+| --- | --- |
+| Vendedor | Caja, disponibilidad y precio de venta, comprobantes e historial de sus propias ventas. |
+| Almacenero | Existencias, alertas, ingresos y bajas, y consulta de movimientos. Puede seleccionar un proveedor al registrar un ingreso. |
+| Dueño | Panel, rentabilidad y rotación, administración de productos y proveedores y consulta de existencias. |
+| Administrador | Todos los módulos, historial completo, administración de cuentas y registro de actividad. |
+
+Desde **Usuarios**, el administrador puede crear y editar cuentas, asignar roles, restablecer contraseñas y desactivar o reactivar cuentas. Un cambio de rol, usuario, contraseña o estado invalida las sesiones anteriores de esa cuenta. Las contraseñas se almacenan como hashes con una sal individual. Las ventas históricas de demostración se asignan a `vendedor`. Las ventas anteriores sin cuenta asociada siguen disponibles para el administrador.
+
 ```sh
 npm test
 npm run build
@@ -25,7 +38,8 @@ npm run build
 | RF-08 a RF-11 | Ingresos con costo y proveedor, bajas con motivo, actualización de stock y alertas de mínimos. |
 | RF-12 y RF-13 | Indicadores, utilidad bruta estimada según el costo promedio registrado, tendencia y rotación de productos por periodo. |
 | RF-15 a RF-18 | Alta y edición de productos y proveedores, con asignación de varios proveedores por producto. |
-| RF-14 y RF-19 a RF-21 | Pendientes el agente de IA, la administración de cuentas, los permisos por rol y la auditoría administrativa. |
+| RF-19 a RF-21 | Acceso administrativo completo, gestión de usuarios y roles, y registro de actividad. |
+| RF-14 | Pendiente el agente de IA. |
 
 El comprobante queda identificado como interno. La emisión tributaria electrónica y otras integraciones se pueden definir en una fase posterior. El prototipo incluye datos ficticios para recorrer los flujos desde el primer acceso.
 
@@ -33,6 +47,6 @@ Las ventas y sus partidas se escriben en una transacción. Los movimientos manti
 
 ## Despliegue
 
-El destino configurado es un Site privado con autenticación de ChatGPT y enlace a Cloudflare D1 bajo el nombre `DB`. El build genera `dist/server/index.js`. Las migraciones de `drizzle/` definen el esquema. SQLite y D1 usan bases de datos independientes.
+El destino configurado es un Site privado con autenticación de ChatGPT y enlace a Cloudflare D1 bajo el nombre `DB`. El build genera `dist/server/index.js`. Las migraciones numeradas de `drizzle/` definen el esquema. SQLite y D1 usan bases de datos independientes.
 
-La disponibilidad continua, el objetivo de rendimiento bajo carga, los respaldos automáticos y los permisos diferenciados requieren puesta a punto antes de incorporar datos reales.
+La disponibilidad continua, el objetivo de rendimiento bajo carga y los respaldos automáticos siguen pendientes de validación o implementación.

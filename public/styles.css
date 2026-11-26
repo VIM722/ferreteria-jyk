@@ -41,6 +41,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .navigation svg { width: 18px; height: 18px; }
 .sidebar-foot { border-top: 1px solid #ffffff15; margin: auto 18px 0; padding: 19px 2px 23px; display: flex; align-items: center; gap: 10px; }
 .sidebar-foot strong { font-size: 13px; color: #f3ecfb; white-space: nowrap; }
+.sidebar-foot > span:last-child { min-width: 0; }
+.sidebar-foot strong { display: block; text-overflow: ellipsis; overflow: hidden; }
 .avatar, .top-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 50%; font-size: 12px; font-weight: 750; }
 .avatar { background: #352554; color: #e2ceff; }
 .top-avatar { background: #eee5ff; color: #5b32b3; }
@@ -175,6 +177,23 @@ dialog::backdrop { background: #19112c82; }
 .receipt-info .badge { justify-self: start; }
 .toast { position: fixed; bottom: 20px; right: 20px; z-index: 10; max-width: calc(100% - 40px); background: var(--nav); color: white; border-radius: 9px; box-shadow: 0 8px 24px #1b10363d; padding: 11px 15px; font-size: 14px; }
 .warning-note { border: 1px solid #f1ddb0; border-radius: 8px; padding: 10px 12px; color: #754a11; background: #fff8e8; font-size: 14px; margin: 10px 0; }
+.login-screen { min-height: 100dvh; display: grid; place-items: center; padding: 28px; }
+.login-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.04fr); width: min(100%,950px); min-height: 514px; overflow: hidden; border: 1px solid #e8e2f1; border-radius: 20px; background: #fff; box-shadow: 0 14px 55px #30186513; }
+.login-art { display: flex; align-items: flex-start; background: linear-gradient(#25124eac,transparent 44%), #3e1d88 url("/herramientas.webp") 68% center / cover no-repeat; }
+.login-brand { margin: 0; padding: 23px; color: #fff; border: 0; }
+.login-brand small { color: #eee1ff; }
+.login-main { align-self: center; padding: 33px clamp(20px,5vw,61px); }
+.login-lock { width: 43px; height: 43px; margin-bottom: 14px; border-radius: 12px; }
+.login-lock svg { width: 21px; height: 21px; }
+.login-main > p { color: var(--muted); line-height: 1.5; margin: 8px 0 21px; }
+.login-main form { display: grid; gap: 14px; }
+.login-main input { min-height: 43px; }
+.login-main form .btn { min-height: 43px; }
+.password-input { position: relative; display: block; }
+.password-input input { width: 100%; padding-right: 45px; }
+.password-input button { position: absolute; top: 4px; right: 4px; }
+.login-main .login-status { margin: 12px 0 0; font-size: 13px; }
+.login-main .form-error { margin: 0; }
 
 @media (max-width: 1110px) {
   .sidebar { width: 208px; }
@@ -199,6 +218,11 @@ dialog::backdrop { background: #19112c82; }
   .search-trigger { width: 36px; justify-content: center; padding: 0; }
   .search-trigger span, .search-trigger kbd { display: none; }
   .top-avatar { width: 31px; height: 31px; }
+  .login-screen { padding: 14px; }
+  .login-layout { grid-template-columns: 1fr; min-height: auto; }
+  .login-art { min-height: 142px; background-position: 70% 33%; }
+  .login-main { padding: 23px 19px 25px; }
+  .login-brand { padding: 15px; }
   .page-head { align-items: flex-start; flex-direction: column; margin-bottom: 15px; }
   .hero { min-height: 202px; }
   .hero-copy { padding: 19px 15px; width: 76%; }

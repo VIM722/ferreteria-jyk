@@ -41,7 +41,7 @@ export async function prepararDemo(db) {
     const dayStart = today - (6 - dayIndex) * 86400000
     const when = new Date(Math.min(now.getTime(), dayStart + (9 + index) * 3600000)).toISOString()
     const quantity = product === 1 ? 5 + index : product === 2 ? 10 : 1 + (index % 2)
-    queries.push(query('INSERT INTO ventas(id,solicitud,fecha,cliente,documento,tipo,pago) VALUES (?,?,?,?,?,?,?)',
+    queries.push(query("INSERT INTO ventas(id,solicitud,fecha,cliente,documento,tipo,pago,usuario_id) VALUES (?,?,?,?,?,?,?,(SELECT id FROM usuarios WHERE usuario='vendedor'))",
       sequence, 'demo-' + sequence, when, clients[sequence % clients.length], '',
       'Boleta', ['Efectivo','Yape / Plin','Tarjeta'][index % 3]))
     queries.push(query('INSERT INTO partidas VALUES (?,?,?,?,?,?,0)',

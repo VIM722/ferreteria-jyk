@@ -11,13 +11,11 @@ for (const [path, [file, type]] of Object.entries(assetTypes)) {
   const data = await readFile(new URL('../public/' + file, import.meta.url))
   assets[path] = [type, type.startsWith('image/') ? data.toString('base64') : data.toString('utf8')]
 }
-const seed = await readFile(new URL('../server/demo.js', import.meta.url), 'utf8')
-const worker = await readFile(new URL('../server/worker.js', import.meta.url), 'utf8')
-const combined = [
-  'const assets = ' + JSON.stringify(assets),
-  seed.replace(/^export /gm, ''),
-  worker.replace(/^import .*\n/m, ''),
-].join('\n')
+const sources = await Promise.all(['http','auth','demo','worker'].map(async name => {
+  const code = await readFile(new URL('../server/' + name + '.js', import.meta.url), 'utf8')
+  return code.replace(/^import .*\r?\n/gm,'').replace(/^export (?!default )/gm,'')
+}))
+const combined = ['const assets = ' + JSON.stringify(assets), ...sources].join('\n')
 
 await mkdir('dist/server', { recursive: true })
 await mkdir('dist/.openai', { recursive: true })

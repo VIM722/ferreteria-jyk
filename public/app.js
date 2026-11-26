@@ -1,10 +1,20 @@
 const main = document.querySelector('#main')
 const modal = document.querySelector('#modal')
+const appShell = document.querySelector('#app-shell')
+const loginScreen = document.querySelector('#login-screen')
+const loginForm = document.querySelector('#login-form')
+const loginStatus = document.querySelector('#login-status')
+const loginError = document.querySelector('#login-error')
 const state = {
   page: 'panel', sub: '', dias: 7, catalog: null, panel: null, cart: new Map(), receipt: {},
-  saleToken: null, submittingSale: false, salesPage: 1, salesFilters: {}, viewLoad: 0,
+  saleToken: null, submittingSale: false, salesPage: 1, salesFilters: {}, viewLoad: 0, user: null, accounts: [],
 }
-const titles = { panel: 'Panel general', ventas: 'Ventas', inventario: 'Inventario', proveedores: 'Proveedores', reportes: 'Reportes' }
+const titles = { panel: 'Panel general', ventas: 'Ventas', inventario: 'Inventario', proveedores: 'Proveedores', reportes: 'Reportes', usuarios: 'Usuarios', actividad: 'Actividad' }
+const roles = { vendedor: 'Vendedor', almacenero: 'Almacenero', dueno: 'Dueño', administrador: 'Administrador' }
+const pageGrants = { panel:['reportes'], ventas:['ventas'], inventario:['inventario','catalogo'], proveedores:['proveedores'], reportes:['reportes'], usuarios:['usuarios'], actividad:['actividad'] }
+const has = permission => state.user?.permisos.includes(permission) ?? false
+const canOpen = page => pageGrants[page]?.some(has) ?? false
+const homePage = () => canOpen('panel') ? 'panel' : canOpen('ventas') ? 'ventas' : 'inventario'
 const categoryIcons = { Herramientas: 'hammer', Construcción: 'box', Electricidad: 'bolt', Gasfitería: 'drop', Pinturas: 'brush', Fijaciones: 'hammer', Seguridad: 'shield' }
 const colors = { Herramientas: '', Construcción: 'amber', Electricidad: 'blue', Gasfitería: 'blue', Pinturas: 'pink', Fijaciones: 'amber', Seguridad: 'green' }
 const methods = ['Efectivo', 'Tarjeta', 'Yape / Plin', 'Transferencia']
@@ -27,6 +37,7 @@ let chartResize
 let timer
 
 async function api(path, method = 'GET', body) {
+  const viewer = state.user
   const response = await fetch('/api/' + path, {
     method, ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
   })
@@ -39,9 +50,70 @@ async function api(path, method = 'GET', body) {
   if (!response.ok) {
     const error = new Error(data.error || 'No se pudo completar la operación.')
     error.status = response.status
+    if (response.status === 401 && viewer && state.user === viewer && path !== 'login') {
+      showLogin('Tu sesión terminó. Ingresa de nuevo.')
+    }
     throw error
   }
   return data
+}
+function showLogin(message = '') {
+  state.viewLoad++
+  state.user = null
+  state.catalog = null
+  state.panel = null
+  state.accounts = []
+  state.receipt = {}
+  state.cart.clear()
+  state.saleToken = null
+  state.salesFilters = {}
+  state.salesPage = 1
+  state.dias = 7
+  chartResize?.disconnect()
+  if (modal.open) modal.close()
+  modal.replaceChildren()
+  main.replaceChildren()
+  appShell.hidden = true
+  loginScreen.hidden = false
+  loginStatus.hidden = true
+  loginError.textContent = message
+  loginError.hidden = !message
+  loginForm.reset()
+  loginForm.elements.clave.type = 'password'
+  const toggle = loginForm.querySelector('[data-action="ver-clave"]')
+  toggle.setAttribute('aria-pressed','false')
+  toggle.setAttribute('aria-label','Mostrar contraseña')
+  loginForm.querySelector('[type="submit"]').disabled = false
+  loginForm.elements.usuario.focus()
+}
+async function enter(user, preserveRoute = false) {
+  state.user = user
+  const letters = user.nombre.split(/\s+/).slice(0,2).map(word => word[0]).join('').toUpperCase()
+  document.querySelector('#profile-name').textContent = user.nombre
+  document.querySelector('#profile-role').textContent = roles[user.rol]
+  document.querySelector('#profile-initials').textContent = letters
+  document.querySelector('#sidebar-initials').textContent = letters
+  document.querySelector('#home-link').href = '#' + homePage()
+  document.querySelectorAll('.nav-group').forEach(group => {
+    group.querySelectorAll('a').forEach(link => { link.hidden = !canOpen(link.hash.slice(1)) })
+    group.hidden = !group.querySelector('a:not([hidden])')
+  })
+  document.querySelector('.bell-button').hidden = !canOpen('inventario')
+  document.querySelector('#alert-dot').hidden = true
+  if (!preserveRoute || !location.hash) historyNavigation('#' + homePage())
+  main.innerHTML = empty('Cargando tu espacio de trabajo…')
+  loginForm.reset()
+  loginScreen.hidden = true
+  appShell.hidden = false
+  await render()
+}
+async function initialize() {
+  try {
+    const user = await api('sesion')
+    await enter(user,true)
+  } catch (error) {
+    showLogin(error.status === 401 ? '' : error.message)
+  }
 }
 function notify(message) {
   const toast = document.querySelector('#toast')
@@ -105,12 +177,13 @@ function dashboard(data) {
       <div class="hero-copy">
         <h2>Ferretería JyK</h2>
         <p>Registra ventas y consulta las existencias<br> de tu ferretería en un solo lugar.</p>
-        <a href="#ventas" class="btn">${icon('plus')} Nueva venta</a>
+        ${has('ventas') ? `<a href="#ventas" class="btn">${icon('plus')} Nueva venta</a>`
+          : `<a href="#reportes" class="btn">${icon('chart')} Ver reportes</a>`}
       </div>
     </section>
     ${indicators(data)}
     <div class="split">${chartCard()}${stockAlerts(data.alertas)}</div>
-    <section class="card">${cardHead('Ventas recientes','',`<a class="text-btn" href="#ventas/historial">Ver historial</a>`)}${salesTable(data.recientes)}</section>`
+    ${has('ventas') ? `<section class="card">${cardHead('Ventas recientes','',`<a class="text-btn" href="#ventas/historial">Ver historial</a>`)}${salesTable(data.recientes)}</section>` : ''}`
 }
 function drawChart(series) {
   const canvas = document.querySelector('#chart')
@@ -202,18 +275,23 @@ function inventoryRows() {
   const category = document.querySelector('#inventory-category')?.value || ''
   const products = state.catalog.productos.filter(p => (p.nombre + ' ' + p.sku).toLowerCase().includes(filter)
     && (!category || p.categoria === category) && (state.sub !== 'alertas' || p.stock <= p.minimo))
-  return table(['Producto','Categoría','Precio','Stock','Mínimo','Estado','Acciones'], products.map(p => `<tr>
+  const edit = has('catalogo')
+  const columns = ['Producto','Categoría',edit ? 'Precio' : 'Costo promedio','Stock','Mínimo','Estado']
+  if (edit) columns.push('Acciones')
+  return table(columns, products.map(p => `<tr>
     <td><div class="item-name">${productTile(p.categoria)}<span><b>${html(p.nombre)}</b><small>${html(p.sku)}</small></span></div></td>
-    <td>${html(p.categoria)}</td><td>${money(p.precio)}</td><td><strong>${p.stock}</strong></td><td>${p.minimo}</td>
+    <td>${html(p.categoria)}</td><td>${money(edit ? p.precio : p.costo)}</td><td><strong>${p.stock}</strong></td><td>${p.minimo}</td>
     <td><span class="badge ${p.stock === 0 ? 'danger' : p.stock <= p.minimo ? 'warning' : ''}">${p.stock === 0 ? 'Agotado' : p.stock <= p.minimo ? 'Stock bajo' : 'Disponible'}</span></td>
-    <td class="row-action">${btn('Editar','producto','edit','secondary',`data-id="${p.id}"`)}</td>
+    ${edit ? `<td class="row-action">${btn('Editar','producto','edit','secondary',`data-id="${p.id}"`)}</td>` : ''}
   </tr>`), 'No se encontraron productos.')
 }
 function inventory() {
   const categories = selectOptions(state.catalog.categorias)
-  return `${pageHead('Inventario','Administra el catálogo y los movimientos de existencias.',
-    btn('Ingreso / Baja','movimiento','swap') + btn('Nuevo producto','producto','plus','primary'))}
-    ${tabs('inventario',[['','Catálogo'],['alertas','Stock bajo'],['movimientos','Movimientos']])}
+  const changeStock = has('inventario')
+  const edit = has('catalogo')
+  return `${pageHead('Inventario',changeStock ? 'Consulta existencias y registra ingresos y bajas.' : 'Administra el catálogo y consulta las existencias.',
+    (changeStock ? btn('Ingreso / Baja','movimiento','swap',edit ? 'secondary' : 'primary') : '') + (edit ? btn('Nuevo producto','producto','plus','primary') : ''))}
+    ${tabs('inventario',[['','Catálogo'],['alertas','Stock bajo'],...(changeStock ? [['movimientos','Movimientos']] : [])])}
     <section class="card">
       ${cardHead(state.sub === 'alertas' ? 'Productos por reponer' : 'Catálogo de productos')}
       <div class="toolbar"><input id="inventory-search" type="search" placeholder="Buscar por nombre o SKU" aria-label="Buscar por nombre o SKU"><select id="inventory-category" aria-label="Categoría"><option value="">Todas las categorías</option>${categories}</select></div>
@@ -241,6 +319,26 @@ function suppliers() {
       <td class="row-action">${btn('Editar','proveedor','edit','secondary',`data-id="${p.id}"`)}</td>
     </tr>`))}</section>`
 }
+function userPage(accounts) {
+  return `${pageHead('Usuarios','Administra las cuentas y su acceso a la ferretería.',btn('Nuevo usuario','usuario','plus','primary'))}
+    <section class="card">${cardHead('Cuentas del sistema')}
+      ${table(['Nombre','Usuario','Rol','Estado','Acciones'],accounts.map(account => `<tr>
+        <td><div class="item-name">${tile('users')}<b>${html(account.nombre)}</b></div></td>
+        <td>${html(account.usuario)}${account.id === state.user.id ? ' (tú)' : ''}</td>
+        <td><span class="badge neutral">${roles[account.rol]}</span></td>
+        <td><span class="badge ${account.activo ? '' : 'danger'}">${account.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td class="row-action">${btn('Editar','usuario','edit','secondary',`data-id="${account.id}" aria-label="Editar a ${html(account.nombre)}"`)}</td>
+      </tr>`))}
+    </section>`
+}
+function activityPage(entries) {
+  return `${pageHead('Actividad','Consulta los últimos 100 registros del sistema.')}
+    <section class="card">${cardHead('Registro de actividad')}
+    ${table(['Fecha','Cuenta','Acción','Detalle'],entries.map(entry => `<tr>
+      <td>${localDateTime.format(new Date(entry.fecha))}</td><td><div class="item-name"><span><b>${html(entry.nombre)}</b><small>${html(entry.usuario)}</small></span></div></td>
+      <td><span class="badge neutral">${html(entry.accion)}</span></td><td>${html(entry.detalle || '—')}</td>
+    </tr>`),'Todavía no hay actividad registrada.')}</section>`
+}
 function report(data) {
   const rotation = data.rotacion
   const headers = ['Producto','Unidades vendidas']
@@ -266,7 +364,7 @@ function productList(filter = '', mode = 'sale') {
   if (!products.length) return empty('No se encontraron productos.')
   return `<ul class="products-list">${products.map(p => `<li>
     ${productTile(p.categoria)}<span class="item-name"><b>${html(p.nombre)}</b><small>${html(p.sku)} · ${p.stock} disponibles</small></span>
-    <strong>${money(p.precio)}</strong>
+    ${typeof p.precio === 'number' ? `<strong>${money(p.precio)}</strong>` : ''}
     ${mode === 'sale' ? `<button type="button" class="icon-btn" data-action="agregar" data-id="${p.id}" aria-label="Agregar ${html(p.nombre)}" ${p.stock <= (state.cart.get(p.id)?.cantidad || 0) ? 'disabled' : ''}>${icon('plus')}</button>` :
       btn('Ver producto','buscar-resultado',null,'secondary',`data-id="${p.id}"`)}
   </li>`).join('')}</ul>`
@@ -385,6 +483,19 @@ function supplierDialog(id) {
     + field('Teléfono',input('telefono',supplier?.telefono,'type="tel" maxlength="30"'))
     + checkList(productos,selected,'productos','Productos que suministra')))
 }
+function userDialog(id) {
+  const account = state.accounts.find(item => item.id === id)
+  const isSelf = account?.id === state.user.id
+  openDialog(account ? 'Editar usuario' : 'Nuevo usuario',form('user-form',
+    input('id',account?.id || '', 'type="hidden"')
+    + field('Nombre',input('nombre',account?.nombre,'required maxlength="100" autofocus'),true)
+    + field('Usuario',input('usuario',account?.usuario,'required minlength="3" maxlength="32" autocomplete="off" autocapitalize="none" pattern="[a-zA-Z0-9._\\-]{3,32}"'))
+    + field('Rol',`<select name="rol" ${isSelf ? 'disabled' : ''}>${Object.entries(roles).map(([value,label]) =>
+      `<option value="${value}"${value === account?.rol ? ' selected' : ''}>${label}</option>`).join('')}</select>`)
+    + field(account ? 'Nueva contraseña (opcional)' : 'Contraseña',
+      input('clave','',`type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="Mínimo 12 caracteres" ${account ? '' : 'required'}`),true)
+    + field('Estado',`<select name="activo" ${isSelf ? 'disabled' : ''}><option value="1">Activo</option><option value="0"${account?.activo === 0 ? ' selected' : ''}>Inactivo</option></select>`)))
+}
 function movementDialog(id) {
   const { productos, proveedores } = state.catalog
   if (!productos.length) return notify('Primero registra un producto en el catálogo.')
@@ -441,12 +552,19 @@ function toggleMenu(force) {
   const open = document.body.classList.toggle('menu-open',force)
   document.querySelector('.mobile-menu').setAttribute('aria-expanded', String(open))
 }
+function showStockNotice() {
+  const alerts = state.catalog?.productos.some(p => p.stock <= p.minimo)
+  document.querySelector('#alert-dot').hidden = !alerts
+}
 async function render() {
+  if (!state.user) return
   const [requested,sub] = location.hash.slice(1).split('/')
-  const page = Object.hasOwn(titles,requested) ? requested : 'panel'
-  const validSub = page === 'ventas' ? ['historial'] : page === 'inventario' ? ['alertas','movimientos'] : []
+  const page = Object.hasOwn(titles,requested) && canOpen(requested) ? requested : homePage()
+  const validSub = page === 'ventas' ? ['historial'] : page === 'inventario' ? ['alertas',...(has('inventario') ? ['movimientos'] : [])] : []
   state.page = page
   state.sub = validSub.includes(sub) ? sub : ''
+  const expectedHash = '#' + page + (state.sub ? '/' + state.sub : '')
+  if (location.hash !== expectedHash) historyNavigation(expectedHash)
   const load = ++state.viewLoad
   chartResize?.disconnect()
   document.querySelector('#breadcrumb').textContent = titles[page]
@@ -458,12 +576,15 @@ async function render() {
     let result
     if (page === 'panel' || page === 'reportes') {
       result = await api('panel?dias=' + state.dias)
+    } else if (page === 'usuarios' || page === 'actividad') {
+      result = await api(page)
     } else if (page === 'ventas' && state.sub === 'historial') {
       result = await api('ventas?' + new URLSearchParams({ ...state.salesFilters, pagina: state.salesPage }))
     } else {
       const [catalog, movements] = await Promise.all([api('catalogo'), state.sub === 'movimientos' ? api('movimientos') : null])
       if (load !== state.viewLoad) return
       state.catalog = catalog
+      if (canOpen('inventario')) showStockNotice()
       result = movements
     }
     if (load !== state.viewLoad) return
@@ -476,9 +597,14 @@ async function render() {
     if (page === 'ventas') main.innerHTML = state.sub === 'historial' ? history(result) : checkout()
     if (page === 'inventario') main.innerHTML = state.sub === 'movimientos' ? movements(result) : inventory()
     if (page === 'proveedores') main.innerHTML = suppliers()
+    if (page === 'usuarios') {
+      state.accounts = result
+      main.innerHTML = userPage(result)
+    }
+    if (page === 'actividad') main.innerHTML = activityPage(result)
   } catch (error) {
     if (load !== state.viewLoad) return
-    main.innerHTML = `${pageHead(titles[page],'')}<div class="card">${empty(error.message)}<div class="alert-foot">${btn('Reintentar','reintentar',null,'quiet')} ${error.status === 401 ? '<a class="btn primary full" href="/signin-with-chatgpt">Iniciar sesión</a>' : ''}</div></div>`
+    main.innerHTML = `${pageHead(titles[page],'')}<div class="card">${empty(error.message)}<div class="alert-foot">${btn('Reintentar','reintentar',null,'quiet')}</div></div>`
   }
 }
 
@@ -491,24 +617,46 @@ document.addEventListener('click', async event => {
   const { action } = button.dataset
   const id = Number(button.dataset.id)
   try {
+    if (action === 'ver-clave') {
+      const password = loginForm.elements.clave
+      const visible = password.type === 'password'
+      password.type = visible ? 'text' : 'password'
+      button.setAttribute('aria-pressed',String(visible))
+      button.setAttribute('aria-label',visible ? 'Ocultar contraseña' : 'Mostrar contraseña')
+      return
+    }
+    if (!state.user) return
+    if (action === 'salir') {
+      button.disabled = true
+      try {
+        await api('logout','POST',{})
+        showLogin()
+        window.history.replaceState(null,'',location.pathname + location.search)
+      } finally {
+        button.disabled = false
+      }
+      return
+    }
     if (action === 'menu') toggleMenu(!document.body.classList.contains('menu-open'))
     if (action === 'buscar') await searchDialog()
     if (action === 'alertas') location.hash = 'inventario/alertas'
     if (action === 'reintentar') await render()
     if (action === 'buscar-resultado') {
       modal.close()
-      if (state.page !== 'inventario' || state.sub) {
-        historyNavigation('#inventario')
+      const destination = canOpen('inventario') ? 'inventario' : 'ventas'
+      if (state.page !== destination || state.sub) {
+        historyNavigation('#' + destination)
         await render()
       }
       const product = state.catalog.productos.find(p => p.id === id)
-      const filter = document.querySelector('#inventory-search')
+      const filter = document.querySelector(destination === 'inventario' ? '#inventory-search' : '#sale-search')
       filter.value = product?.sku || ''
-      document.querySelector('#inventory-rows').innerHTML = inventoryRows()
+      filter.dispatchEvent(new Event('input',{ bubbles:true }))
       filter.focus()
     }
     if (action === 'producto') productDialog(id)
     if (action === 'proveedor') supplierDialog(id)
+    if (action === 'usuario') userDialog(id)
     if (action === 'movimiento') movementDialog(id)
     if (['agregar','restar','quitar'].includes(action)) changeCart(action,id,button)
     if (action === 'cobrar') paymentDialog()
@@ -524,7 +672,7 @@ document.addEventListener('click', async event => {
   }
 })
 function historyNavigation(path) {
-  window.history.pushState(null,'',path)
+  window.history.replaceState(null,'',path)
 }
 document.addEventListener('input', event => {
   const { id, value, dataset } = event.target
@@ -555,7 +703,7 @@ document.addEventListener('change', event => {
   }
 })
 document.addEventListener('keydown', event => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+  if (state.user && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
     if (!modal.open) searchDialog().catch(error => notify(error.message))
   }
@@ -569,6 +717,26 @@ document.addEventListener('submit', async event => {
   const form = event.target
   const formData = new FormData(form)
   const data = Object.fromEntries(formData)
+  if (form.id === 'login-form') {
+    const submit = form.querySelector('[type="submit"]')
+    if (submit.disabled) return
+    submit.disabled = true
+    loginError.hidden = true
+    loginStatus.textContent = 'Ingresando…'
+    loginStatus.hidden = false
+    try {
+      const user = await api('login','POST',data)
+      await enter(user)
+    } catch (error) {
+      loginError.textContent = error.message
+      loginError.hidden = false
+    } finally {
+      loginStatus.hidden = true
+      submit.disabled = false
+    }
+    return
+  }
+  if (!state.user) return
   if (form.id === 'sales-filters') {
     state.salesFilters = data
     state.salesPage = 1
@@ -609,11 +777,21 @@ document.addEventListener('submit', async event => {
       if (form.id === 'movement-form') {
         await api('movimientos','POST',{ ...data, id: Number(data.id), cantidad: Number(data.cantidad), costo: cents('costo'), proveedor: Number(data.proveedor) })
       }
+      if (form.id === 'user-form') {
+        const self = Number(data.id) === state.user.id
+        await api('usuarios' + (data.id ? '/' + data.id : ''),data.id ? 'PUT' : 'POST',{
+          ...data, rol: self ? state.user.rol : data.rol, activo: self || data.activo === '1',
+        })
+        if (self) {
+          const current = await api('sesion')
+          await enter(current,true)
+        }
+      }
       modal.close()
       notify('Cambios guardados.')
     }
     await render()
-    api('panel?dias=' + state.dias).then(panel => {
+    if (has('reportes')) api('panel?dias=' + state.dias).then(panel => {
       document.querySelector('#alert-dot').hidden = !panel.inventario.alertas
     }).catch(() => {})
   } catch (error) {
@@ -653,4 +831,4 @@ window.addEventListener('hashchange', () => {
   render()
   window.scrollTo(0,0)
 })
-render()
+initialize()
