@@ -187,7 +187,6 @@ export default {
       return new Response(request.method === 'HEAD' ? null : data, { headers: { ...headers, 'Content-Type': type, 'Cache-Control': type.startsWith('image/') ? 'public,max-age=86400' : 'no-cache' } })
     }
     try {
-      if (!env.LOCAL_PREVIEW && !request.headers.get('oai-authenticated-user-id')) return json({ error: 'Inicia sesión para continuar.' }, 401)
       const db = env.DB
       if (!db) return json({ error: 'La base de datos no está disponible.' }, 503)
       const method = request.method

@@ -30,7 +30,7 @@ createServer(async (incoming, outgoing) => {
     const localAssets = asset
       ? { [url.pathname]: [asset[1], readFileSync(new URL('../public/' + asset[0], import.meta.url))] }
       : {}
-    const response = await worker.fetch(request, { DB, LOCAL_PREVIEW: true, localAssets })
+    const response = await worker.fetch(request, { DB, localAssets })
     outgoing.writeHead(response.status, Object.fromEntries(response.headers))
     if (response.body) Readable.fromWeb(response.body).pipe(outgoing)
     else outgoing.end()

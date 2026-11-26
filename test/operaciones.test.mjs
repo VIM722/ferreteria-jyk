@@ -14,7 +14,7 @@ async function request(db, path, method = 'GET', data, cookie) {
       ...(cookie && { Cookie: cookie }),
       ...(data && { 'Content-Type': 'application/json', Origin: 'http://localhost' }),
     }, ...(data && { body: JSON.stringify(data) }),
-  }), { DB: db, LOCAL_PREVIEW: true })
+  }), { DB: db })
   return { status: result.status, data: await result.json(), cookie: result.headers.get('set-cookie')?.split(';')[0] }
 }
 const testPassword = 'Solo-pruebas-1234'
@@ -85,15 +85,30 @@ test('registra ingreso y baja, actualiza el costo promedio y rechaza una baja ma
   assert.equal((await owner('panel?dias=30')).data.serie.length,30)
 })
 
-test('la API alojada exige sesión y rechaza escrituras de otro origen', async t => {
-  const db = database(':memory:')
-  t.after(() => db.close())
-  let response = await worker.fetch(new Request('https://jyk.example/api/catalogo'),{ DB: db })
-  assert.equal(response.status,401)
-  response = await worker.fetch(new Request('https://jyk.example/api/login',{
-    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://otro.example', 'oai-authenticated-user-id': 'owner' }, body: '{}',
-  }),{ DB: db })
+test('el acceso público usa credenciales propias y protege la API, los roles y el origen de escritura', async t => {
+  const { db } = await fixture(t)
+  const site = 'https://jyk.example'
+  const fetch = (path, options) => worker.fetch(new Request(site + '/api/' + path, options), { DB:db })
+  for (const path of ['catalogo','ventas','movimientos','panel','usuarios','actividad']) {
+    assert.equal((await fetch(path)).status,401)
+  }
+  const credentials = JSON.stringify({usuario:'vendedor',clave:testPassword})
+  let response = await fetch('login',{
+    method:'POST', headers:{'Content-Type':'application/json',Origin:'https://otro.example'}, body:credentials,
+  })
   assert.equal(response.status,403)
+  response = await fetch('login',{
+    method:'POST', headers:{'Content-Type':'application/json',Origin:site}, body:credentials,
+  })
+  assert.equal(response.status,200)
+  assert.equal((await response.json()).rol,'vendedor')
+  const sessionCookie = response.headers.get('set-cookie')
+  assert.match(sessionCookie,/HttpOnly; SameSite=Strict/)
+  assert.match(sessionCookie,/; Secure/)
+  const headers = { Cookie:sessionCookie.split(';')[0] }
+  db.prepare("UPDATE sesiones SET identidad='sesion-del-despliegue-anterior'").run()
+  assert.equal((await fetch('catalogo',{ headers })).status,200)
+  assert.equal((await fetch('usuarios',{ headers })).status,403)
 })
 
 test('la API aplica la matriz de permisos y limita los datos que entrega por rol', async t => {

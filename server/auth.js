@@ -70,9 +70,6 @@ function cookie(request, token, seconds) {
 function rawToken(request) {
   return request.headers.get('cookie')?.match(/(?:^|;\s*)jyk_sesion=([0-9a-f]{64})(?:;|$)/)?.[1]
 }
-function identity(request) {
-  return request.headers.get('oai-authenticated-user-id') || 'localhost'
-}
 export function viewUser(user) {
   return { id:user.id, usuario:user.usuario, nombre:user.nombre, rol:user.rol, permisos:grants[user.rol] }
 }
@@ -91,14 +88,14 @@ export async function login(db, request, data) {
     throw new RequestError('Usuario o contraseña incorrectos.',401)
   }
   await provisionarUsuarios(db)
-  const who = identity(request)
-  const attemptKey = await sha256(who + '\n' + (request.headers.get('CF-Connecting-IP') || '') + '\n' + name)
+  const ip = request.headers.get('CF-Connecting-IP') || 'local'
+  const [ipKey,attemptKey] = await Promise.all([sha256('ip\n' + ip),sha256('usuario\n' + ip + '\n' + name)])
   const time = Date.now()
   const windowStart = Math.floor(time / attemptWindow) * attemptWindow
-  const attempt = await q(db,`INSERT INTO intentos_login(clave,ventana,cantidad) VALUES (?,?,1)
-    ON CONFLICT(clave,ventana) DO UPDATE SET cantidad=cantidad+1 WHERE cantidad < 8
-    RETURNING cantidad`,attemptKey,windowStart).first()
-  if (!attempt) throw new RequestError('Demasiados intentos. Vuelve a intentarlo en unos minutos.',429)
+  const attempts = await all(db,`INSERT INTO intentos_login(clave,ventana,cantidad) VALUES (?,?,1),(?,?,1)
+    ON CONFLICT(clave,ventana) DO UPDATE SET cantidad=cantidad+1
+    WHERE cantidad < CASE WHEN clave=? THEN 60 ELSE 8 END RETURNING clave`,ipKey,windowStart,attemptKey,windowStart,ipKey)
+  if (attempts.length < 2) throw new RequestError('Demasiados intentos. Vuelve a intentarlo en unos minutos.',429)
   const user = await q(db,'SELECT * FROM usuarios WHERE usuario=?',name).first()
   const { hash } = await hashPassword(data.clave,user?.sal || demoUsers[0][3])
   const valid = equalHash(hash,user?.clave_hash || demoUsers[0][4])
@@ -109,10 +106,11 @@ export async function login(db, request, data) {
   const queries = [
     q(db,'DELETE FROM sesiones WHERE vence <= ?',time),
     q(db,'DELETE FROM intentos_login WHERE ventana < ? OR (clave=? AND ventana=?)',windowStart,attemptKey,windowStart),
-    q(db,'INSERT INTO sesiones VALUES (?,?,?,?,?)',await sha256(token),user.id,who,user.revision,time+lifetime*1000),
+    q(db,"INSERT INTO sesiones(token_hash,usuario_id,identidad,revision,vence) VALUES (?,?,'jyk',?,?)",
+      await sha256(token),user.id,user.revision,time+lifetime*1000),
     audit(db,user,'Inicio de sesión'),
   ]
-  if (currentToken) queries.unshift(q(db,'DELETE FROM sesiones WHERE token_hash=? AND identidad=?',await sha256(currentToken),who))
+  if (currentToken) queries.unshift(q(db,'DELETE FROM sesiones WHERE token_hash=?',await sha256(currentToken)))
   await db.batch(queries)
   return json(viewUser(user),200,{'Set-Cookie':cookie(request,token,lifetime)})
 }
@@ -120,14 +118,14 @@ export async function session(db, request) {
   const token = rawToken(request)
   if (!token) throw new RequestError('Inicia sesión para continuar.',401)
   const user = await q(db,`SELECT u.id,u.usuario,u.nombre,u.rol FROM sesiones s JOIN usuarios u ON u.id=s.usuario_id
-    WHERE s.token_hash=? AND s.identidad=? AND s.vence>? AND s.revision=u.revision AND u.activo=1`,
-    await sha256(token),identity(request),Date.now()).first()
+    WHERE s.token_hash=? AND s.vence>? AND s.revision=u.revision AND u.activo=1`,
+    await sha256(token),Date.now()).first()
   if (!user) throw new RequestError('Inicia sesión para continuar.',401)
   return user
 }
 export async function logout(db, request, user) {
   await db.batch([
-    q(db,'DELETE FROM sesiones WHERE token_hash=? AND identidad=?',await sha256(rawToken(request)),identity(request)),
+    q(db,'DELETE FROM sesiones WHERE token_hash=?',await sha256(rawToken(request))),
     audit(db,user,'Cierre de sesión'),
   ])
   return json({ok:true},200,{'Set-Cookie':cookie(request,'',0)})

@@ -14,7 +14,7 @@ Abre [http://localhost:8080](http://localhost:8080). Los registros se guardan en
 
 ## Inicio de sesión y roles
 
-El sistema crea las cuentas iniciales `vendedor`, `almacenero`, `dueno` y `admin`, además de `ventas2` y `almacen2`. Las claves de prueba se entregan al titular del proyecto. En el despliegue privado, primero se requiere acceso al Site y luego una cuenta de la aplicación.
+El sistema crea las cuentas iniciales `vendedor`, `almacenero`, `dueno` y `admin`, además de `ventas2` y `almacen2`. Las claves de prueba se entregan al titular del proyecto. Cualquier persona con el enlace puede abrir el formulario de ingreso. Las operaciones y los datos requieren una cuenta de Ferretería JyK con el rol correspondiente.
 
 | Rol | Acceso |
 | --- | --- |
@@ -56,6 +56,6 @@ Las ventas y sus partidas se escriben en una transacción. Los movimientos manti
 
 ## Despliegue
 
-El destino configurado es un Site privado con autenticación de ChatGPT y enlace a Cloudflare D1 bajo el nombre `DB`. El build genera `dist/server/index.js`. Las migraciones numeradas de `drizzle/` definen el esquema. SQLite y D1 usan bases de datos independientes.
+La aplicación está desplegada en [Ferretería JyK](https://ferreteria-jyk.drawngate6.chatgpt.site/) y usa Cloudflare D1 mediante el enlace `DB`. El ingreso usa las credenciales propias de la ferretería. El build genera `dist/server/index.js`. Las migraciones numeradas de `drizzle/` definen el esquema. SQLite y D1 usan bases de datos independientes.
 
 La disponibilidad continua, el objetivo de rendimiento bajo carga y los respaldos automáticos siguen pendientes de validación o implementación.
