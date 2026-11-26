@@ -194,6 +194,30 @@ dialog::backdrop { background: #19112c82; }
 .password-input button { position: absolute; top: 4px; right: 4px; }
 .login-main .login-status { margin: 12px 0 0; font-size: 13px; }
 .login-main .form-error { margin: 0; }
+.assistant-layout { display: grid; grid-template-columns: minmax(0,2.25fr) minmax(220px,1fr); gap: 17px; align-items: start; }
+.chat-card { overflow: hidden; display: flex; flex-direction: column; }
+.chat-header { display: flex; align-items: center; gap: 11px; padding: 15px 17px; border-bottom: 1px solid var(--line); background: #fcfaff; }
+.chat-header h2 { font-size: 16px; }
+.chat-header p, .chat-meta { color: var(--muted); font-size: 13px; margin-top: 3px; }
+.chat-feed { display: flex; flex-direction: column; gap: 14px; min-height: 335px; max-height: min(61vh,670px); overflow-y: auto; padding: 17px; }
+.chat-question { align-self: flex-end; max-width: 90%; }
+.chat-question p { background: var(--purple); color: #fff; border-radius: 12px 12px 3px 12px; padding: 10px 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.chat-reply { display: flex; gap: 9px; align-items: flex-start; min-width: 0; }
+.chat-message { max-width: 100%; min-width: 0; padding: 10px 12px; background: #f7f4fd; border-radius: 3px 12px 12px; font-size: 15px; line-height: 1.48; overflow-wrap: anywhere; }
+.chat-result { border: 1px solid var(--line); border-radius: 10px; background: #fff; margin-top: 10px; padding: 11px 12px; }
+.chat-result h3 { font-size: 15px; margin-bottom: 2px; }
+.chat-result > p { font-size: 13px; color: var(--muted); }
+.assistant-results { margin: 8px 0 0; list-style: none; padding: 0; }
+.assistant-results li { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.assistant-results li:last-child { padding-bottom: 0; }
+.assistant-results small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.assistant-price { flex: none; text-align: right; }
+.chat-compose { display: flex; gap: 8px; padding: 14px 17px; background: #fff; border-top: 1px solid var(--line); }
+.chat-compose input { flex: 1; min-width: 0; }
+.assistant-shortcuts, .assistant-periods { display: grid; gap: 9px; padding: 0 15px 15px; }
+.assistant-shortcuts button { display: flex; gap: 8px; align-items: center; text-align: left; padding: 6px 8px; background: #faf8fe; color: #4d3b67; border: 1px solid #efebf8; border-radius: 8px; font-size: 14px; font-weight: 650; }
+.assistant-shortcuts button:hover { background: var(--purple-soft); color: var(--purple-dark); }
+.assistant-shortcuts .icon-tile { width: 30px; height: 30px; }
 
 @media (max-width: 1110px) {
   .sidebar { width: 208px; }
@@ -230,6 +254,13 @@ dialog::backdrop { background: #19112c82; }
   .hero p { font-size: 13px; }
   .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .split, .checkout { grid-template-columns: 1fr; }
+  .assistant-layout { grid-template-columns: 1fr; }
+  .assistant-side { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .chat-feed { min-height: 250px; padding: 12px; }
+  .chat-compose { padding: 10px 12px; }
+  .chat-reply > .icon-tile { width: 27px; height: 27px; }
+  .assistant-combo { flex-direction: column; }
+  .assistant-price { text-align: left; }
   .card-head { padding-inline: 12px; }
   .toolbar { padding-inline: 12px; }
   th,td { padding-inline: 12px; }

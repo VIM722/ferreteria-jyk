@@ -5,13 +5,15 @@ const loginScreen = document.querySelector('#login-screen')
 const loginForm = document.querySelector('#login-form')
 const loginStatus = document.querySelector('#login-status')
 const loginError = document.querySelector('#login-error')
+const newAssistant = () => ({ messages:[], temas:[], dias:30, horizonte:14, pending:false })
 const state = {
   page: 'panel', sub: '', dias: 7, catalog: null, panel: null, cart: new Map(), receipt: {},
   saleToken: null, submittingSale: false, salesPage: 1, salesFilters: {}, viewLoad: 0, user: null, accounts: [],
+  assistant: newAssistant(),
 }
-const titles = { panel: 'Panel general', ventas: 'Ventas', inventario: 'Inventario', proveedores: 'Proveedores', reportes: 'Reportes', usuarios: 'Usuarios', actividad: 'Actividad' }
+const titles = { panel: 'Panel general', ventas: 'Ventas', inventario: 'Inventario', proveedores: 'Proveedores', reportes: 'Reportes', asistente: 'Asistente', usuarios: 'Usuarios', actividad: 'Actividad' }
 const roles = { vendedor: 'Vendedor', almacenero: 'Almacenero', dueno: 'Dueño', administrador: 'Administrador' }
-const pageGrants = { panel:['reportes'], ventas:['ventas'], inventario:['inventario','catalogo'], proveedores:['proveedores'], reportes:['reportes'], usuarios:['usuarios'], actividad:['actividad'] }
+const pageGrants = { panel:['reportes'], ventas:['ventas'], inventario:['inventario','catalogo'], proveedores:['proveedores'], reportes:['reportes'], asistente:['asistente'], usuarios:['usuarios'], actividad:['actividad'] }
 const has = permission => state.user?.permisos.includes(permission) ?? false
 const canOpen = page => pageGrants[page]?.some(has) ?? false
 const homePage = () => canOpen('panel') ? 'panel' : canOpen('ventas') ? 'ventas' : 'inventario'
@@ -63,6 +65,7 @@ function showLogin(message = '') {
   state.catalog = null
   state.panel = null
   state.accounts = []
+  state.assistant = newAssistant()
   state.receipt = {}
   state.cart.clear()
   state.saleToken = null
@@ -355,6 +358,110 @@ function report(data) {
       <section class="card">${cardHead('Menor rotación','Incluye productos sin ventas en el periodo')}${table(headers,rows([...rotation].reverse().slice(0,5)))}</section>
     </div>`
 }
+
+const assistantPrompts = [
+  ['trend','Más vendidos','¿Qué productos se vendieron más?'],
+  ['truck','Próximas compras','¿Qué productos recomiendas comprar para las próximas fechas?'],
+  ['box','Promociones','¿Qué productos se venden juntos y qué promociones puedo ofrecer?'],
+]
+const dateLabel = day => localDate.format(new Date(day + 'T12:00:00Z'))
+const assistantHistory = [7,14,30,60,90]
+const assistantHorizon = [7,14,21,30,60]
+function dayOptions(options, current) {
+  return [...new Set([...options,current])].sort((a,b) => a-b)
+    .map(days => `<option value="${days}"${days === current ? ' selected' : ''}>${days} ${days === 1 ? 'día' : 'días'}</option>`).join('')
+}
+function assistantRows(block) {
+  return block.filas.map(row => {
+    if (block.tipo === 'ventas') {
+      return `<li><span><strong>${html(row.nombre)}</strong><small>${html(row.sku)} · ${money(row.importe)} en ventas</small></span><b class="badge neutral">${row.unidades} unid.</b></li>`
+    }
+    if (block.tipo === 'reposicion') {
+      return `<li><span><strong>${html(row.nombre)}</strong><small>Stock ${row.stock} · Mínimo ${row.minimo} · Demanda estimada ${row.demanda}</small></span><b class="badge warning">Comprar ${row.pedido}</b></li>`
+    }
+    return `<li class="assistant-combo"><span><strong>${html(row.nombre)}</strong><small>
+      Aparecieron juntos en ${row.juntos} de ${row.ticketsReferencia} ventas de ${html(row.referencia)}.
+      </small><small>${html(row.accion)}</small></span>${row.precioCombo === null ? '' : `<span class="assistant-price"><b class="badge green">Combo ${money(row.precioCombo)}</b><small>Por separado ${money(row.precioHabitual)}</small></span>`}</li>`
+  }).join('')
+}
+function assistantFeed() {
+  const { messages,pending } = state.assistant
+  const history = messages.map(message => {
+    if (message.question) return `<div class="chat-question"><p>${html(message.question)}</p></div>`
+    const { periodo,bloques,mensaje } = message
+    return `<article class="chat-reply">
+      ${tile('chat')}
+      <div class="chat-message">
+        <p>${html(mensaje)}</p>
+        ${periodo ? `<p class="chat-meta">${dateLabel(periodo.desde)} al ${dateLabel(periodo.hasta)} · ${periodo.comprobantes} ${periodo.comprobantes === 1 ? 'comprobante' : 'comprobantes'}${periodo.demo ? ' · Datos de demostración' : ''}</p>` : ''}
+        ${bloques.map(block => `<section class="chat-result"><h3>${html(block.titulo)}</h3><p>${html(block.descripcion)}</p>
+          ${block.filas.length ? `<ul class="assistant-results">${assistantRows(block)}</ul>` : ''}</section>`).join('')}
+      </div>
+    </article>`
+  }).join('')
+  return `<article class="chat-reply">${tile('chat')}<div class="chat-message"><p>Hola. Puedo ayudarte a revisar qué se vendió más, cuánto reponer y qué productos conviene promocionar juntos.</p></div></article>
+    ${history}${pending ? `<div class="chat-reply">${tile('chat')}<p class="chat-message" role="status">Consultando ventas e inventario…</p></div>` : ''}`
+}
+function assistantPage() {
+  const { dias,horizonte,pending } = state.assistant
+  return `${pageHead('Asistente','Consulta ventas, planifica compras y encuentra promociones para tu ferretería.')}
+    <div class="assistant-layout">
+      <section class="card chat-card" aria-label="Chat de recomendaciones">
+        <div class="chat-header">${tile('chat')}<div><h2>Asistente JyK</h2><p>Ventas e inventario de tu tienda</p></div></div>
+        <div id="assistant-feed" class="chat-feed" role="log" aria-label="Conversación" tabindex="0">${assistantFeed()}</div>
+        <form id="assistant-form" class="chat-compose">
+          <input name="mensaje" autocomplete="off" maxlength="280" required aria-label="Pregunta para el asistente" placeholder="Escribe tu pregunta…">
+          <button class="btn primary" type="submit" ${pending ? 'disabled' : ''}>${icon('send')} Enviar</button>
+        </form>
+      </section>
+      <aside class="stack assistant-side" aria-label="Opciones del asistente">
+        <section class="card">
+          ${cardHead('Preguntas rápidas')}
+          <div class="assistant-shortcuts">${assistantPrompts.map(([symbol,label,question],index) => `<button type="button" data-action="pregunta-asistente" data-id="${index}" title="${html(question)}" ${pending ? 'disabled' : ''}>${tile(symbol)}<span>${label}</span></button>`).join('')}</div>
+        </section>
+        <section class="card">
+          ${cardHead('Periodos')}
+          <div class="assistant-periods">
+            ${field('Historial de ventas',`<select id="assistant-days" ${pending ? 'disabled' : ''}>${dayOptions(assistantHistory,dias)}</select>`)}
+            ${field('Horizonte de compra',`<select id="assistant-horizon" ${pending ? 'disabled' : ''}>${dayOptions(assistantHorizon,horizonte)}</select>`)}
+          </div>
+        </section>
+      </aside>
+    </div>`
+}
+function refreshAssistant() {
+  const feed = document.querySelector('#assistant-feed')
+  if (!feed) return
+  const { pending,dias,horizonte } = state.assistant
+  feed.innerHTML = assistantFeed()
+  feed.scrollTop = pending ? feed.scrollHeight : feed.lastElementChild.offsetTop - feed.firstElementChild.offsetTop
+  document.querySelectorAll('#assistant-form button,[data-action="pregunta-asistente"],#assistant-days,#assistant-horizon')
+    .forEach(control => { control.disabled = pending })
+  document.querySelector('#assistant-days').innerHTML = dayOptions(assistantHistory,dias)
+  document.querySelector('#assistant-horizon').innerHTML = dayOptions(assistantHorizon,horizonte)
+}
+async function askAssistant(question) {
+  const chat = state.assistant
+  const message = question.trim()
+  if (!message || chat.pending || !has('asistente')) return
+  chat.messages = [...chat.messages.slice(-18),{question:message}]
+  chat.pending = true
+  refreshAssistant()
+  try {
+    const reply = await api('asistente','POST',{mensaje:message,dias:chat.dias,horizonte:chat.horizonte,temas:chat.temas})
+    chat.temas = reply.temas
+    if (reply.periodo) {
+      chat.dias = reply.periodo.dias
+      chat.horizonte = reply.periodo.horizonte
+    }
+    chat.messages.push(reply)
+  } catch (error) {
+    chat.messages.push({ mensaje:error.message,bloques:[] })
+  } finally {
+    chat.pending = false
+    if (chat === state.assistant) refreshAssistant()
+  }
+}
 function foundProducts(filter) {
   const value = filter.toLowerCase().trim()
   return state.catalog.productos.filter(p => (p.nombre + ' ' + p.sku).toLowerCase().includes(value))
@@ -572,6 +679,11 @@ async function render() {
     if (a.hash === '#' + page) a.setAttribute('aria-current','page')
     else a.removeAttribute('aria-current')
   })
+  if (page === 'asistente') {
+    main.innerHTML = assistantPage()
+    refreshAssistant()
+    return
+  }
   try {
     let result
     if (page === 'panel' || page === 'reportes') {
@@ -641,6 +753,7 @@ document.addEventListener('click', async event => {
     if (action === 'buscar') await searchDialog()
     if (action === 'alertas') location.hash = 'inventario/alertas'
     if (action === 'reintentar') await render()
+    if (action === 'pregunta-asistente') await askAssistant(assistantPrompts[id][2])
     if (action === 'buscar-resultado') {
       modal.close()
       const destination = canOpen('inventario') ? 'inventario' : 'ventas'
@@ -695,6 +808,8 @@ document.addEventListener('change', event => {
     render()
   }
   if (id === 'inventory-category') document.querySelector('#inventory-rows').innerHTML = inventoryRows()
+  if (id === 'assistant-days') state.assistant.dias = Number(value)
+  if (id === 'assistant-horizon') state.assistant.horizonte = Number(value)
   if (id === 'movement-kind') movementFields()
   if (id === 'receipt-kind') updateDocument()
   if (dataset.discount) {
@@ -726,7 +841,7 @@ document.addEventListener('submit', async event => {
     loginStatus.hidden = false
     try {
       const user = await api('login','POST',data)
-      await enter(user)
+      await enter(user,true)
     } catch (error) {
       loginError.textContent = error.message
       loginError.hidden = false
@@ -737,6 +852,12 @@ document.addEventListener('submit', async event => {
     return
   }
   if (!state.user) return
+  if (form.id === 'assistant-form') {
+    if (state.assistant.pending || !data.mensaje.trim()) return
+    form.reset()
+    await askAssistant(data.mensaje)
+    return
+  }
   if (form.id === 'sales-filters') {
     state.salesFilters = data
     state.salesPage = 1

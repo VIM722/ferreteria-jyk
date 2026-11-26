@@ -3,14 +3,18 @@ import { all, json, now, option, q, RequestError, string } from './http.js'
 const grants = {
   vendedor: ['stock','ventas'],
   almacenero: ['stock','inventario'],
-  dueno: ['stock','catalogo','proveedores','reportes'],
-  administrador: ['stock','ventas','inventario','catalogo','proveedores','reportes','usuarios','actividad'],
+  dueno: ['stock','catalogo','proveedores','reportes','asistente'],
+  administrador: ['stock','ventas','inventario','catalogo','proveedores','reportes','asistente','usuarios','actividad'],
 }
 const demoUsers = [
   ["vendedor","Vendedor de prueba","vendedor","132c00318c2925ef979bae354be02766","c16b0df2295b265a4d97591c22951b943ab414e3eb355938f78ff4a575d9df47"],
   ["almacenero","Almacenero de prueba","almacenero","caa637ecc862b34c24e6fba8080894ad","69dee6022c9cf50ba9c4da647113400308553ed123ea02f093d659ea546c21ae"],
   ["dueno","Dueño de prueba","dueno","7fcf59a1f7bcccd1f5617843982b2e25","8ca3291cd6dfe70d8fdd4c8a7f6df67cc1a593956a5206e3c3c9b8824eb605b4"],
   ["admin","Administrador de prueba","administrador","f93e67487306a55595d04a5b701cc450","c0c1e1542a6efb0c13ad49c84ee222afe0350b49e73f9d2c5c5d1221a5f6d1e5"],
+]
+const additionalDemoUsers = [
+  ["ventas2","Segundo vendedor de prueba","vendedor","3253c92d158533c844882c50de44eaae","018c0e1e0a64254b3cbf47b1c671a6721e8b988cf5082a04b437773b2a828a5e"],
+  ["almacen2","Segundo almacenero de prueba","almacenero","6b50aedff14cfba7ec9e0855dc6d00c8","d649487c4406696a29898e805f3932d05ad0c2646c37741bae74abf4633d5f10"],
 ]
 const lifetime = 8 * 60 * 60
 const attemptWindow = 10 * 60 * 1000
@@ -31,18 +35,27 @@ function equalHash(left, right) {
   return difference === 0
 }
 export async function provisionarUsuarios(db) {
-  const marker = db.prepare("SELECT clave FROM configuracion WHERE clave = 'usuarios-demo'")
-  if (await marker.first()) return
-  const statements = [db.prepare("INSERT INTO configuracion VALUES ('usuarios-demo')")]
-  for (const [usuario,nombre,rol,sal,hash] of demoUsers) {
-    statements.push(q(db,'INSERT INTO usuarios(usuario,nombre,rol,sal,clave_hash,creado) VALUES (?,?,?,?,?,?)',
-      usuario,nombre,rol,sal,hash,now()))
+  const versions = [['usuarios-demo',demoUsers],['usuarios-demo-equipo',additionalDemoUsers]]
+  const current = () => all(db,"SELECT clave FROM configuracion WHERE clave IN ('usuarios-demo','usuarios-demo-equipo')")
+  const existing = new Set((await current()).map(row => row.clave))
+  const missing = versions.filter(([clave]) => !existing.has(clave))
+  if (!missing.length) return
+  const statements = []
+  for (const [clave,accounts] of missing) {
+    statements.push(q(db,'INSERT INTO configuracion VALUES (?)',clave))
+    for (const [usuario,nombre,rol,sal,hash] of accounts) {
+      statements.push(q(db,`INSERT INTO usuarios(usuario,nombre,rol,sal,clave_hash,creado) VALUES (?,?,?,?,?,?)
+        ON CONFLICT(usuario) DO NOTHING`,usuario,nombre,rol,sal,hash,now()))
+    }
+    if (clave === 'usuarios-demo') {
+      statements.push(db.prepare("UPDATE ventas SET usuario_id=(SELECT id FROM usuarios WHERE usuario='vendedor') WHERE usuario_id IS NULL AND solicitud GLOB 'demo-*'"))
+    }
   }
-  statements.push(db.prepare("UPDATE ventas SET usuario_id=(SELECT id FROM usuarios WHERE usuario='vendedor') WHERE usuario_id IS NULL AND solicitud GLOB 'demo-*'"))
   try {
     await db.batch(statements)
   } catch (error) {
-    if (!(await marker.first())) throw error
+    const after = new Set((await current()).map(row => row.clave))
+    if (missing.some(([clave]) => !after.has(clave))) throw error
   }
 }
 function username(value) {

@@ -1,6 +1,7 @@
-import { prepararDemo } from './demo.js'
-import { activity, audit, can, login, logout, permit, saveUser, session, users, viewUser } from './auth.js'
+import { prepararCatalogoAmpliado, prepararDemo } from './demo.js'
+import { activity, audit, can, login, logout, permit, provisionarUsuarios, saveUser, session, users, viewUser } from './auth.js'
 import { all, body, headers, ids, json, now, number, option, q, RequestError, string } from './http.js'
+import { recommend } from './recommendations.js'
 
 const categories = ['Herramientas', 'Construcción', 'Electricidad', 'Gasfitería', 'Pinturas', 'Fijaciones', 'Seguridad', 'Otros']
 const methods = ['Efectivo', 'Tarjeta', 'Yape / Plin', 'Transferencia']
@@ -199,7 +200,10 @@ export default {
       }
       if (path === '/api/usuarios' || /^\/api\/usuarios\/\d+$/.test(path)) {
         permit(user,'usuarios')
-        if (method === 'GET' && path === '/api/usuarios') return json(await users(db))
+        if (method === 'GET' && path === '/api/usuarios') {
+          await provisionarUsuarios(db)
+          return json(await users(db))
+        }
         if (method === 'POST' && path === '/api/usuarios') return json(await saveUser(db,user,await body(request)),201)
         if (method === 'PUT' && path !== '/api/usuarios') {
           const userId = number(Number(path.split('/').pop()),'El código',1,Number.MAX_SAFE_INTEGER)
@@ -211,6 +215,7 @@ export default {
         return json(await activity(db))
       }
       await prepararDemo(db)
+      await prepararCatalogoAmpliado(db)
       if (method === 'GET') {
         if (path === '/api/panel') {
           permit(user,'reportes')
@@ -234,6 +239,10 @@ export default {
         }
       }
       if (method === 'POST') {
+        if (path === '/api/asistente') {
+          permit(user,'asistente')
+          return json(await recommend(db,await body(request)))
+        }
         if (path === '/api/ventas') {
           permit(user,'ventas')
           return json(await createSale(db,await body(request),user),201)

@@ -14,13 +14,13 @@ Abre [http://localhost:8080](http://localhost:8080). Los registros se guardan en
 
 ## Inicio de sesión y roles
 
-El sistema crea las cuentas iniciales `vendedor`, `almacenero`, `dueno` y `admin`. Las claves de prueba se entregan al titular del proyecto. En el despliegue privado, primero se requiere acceso al Site y luego una cuenta de la aplicación.
+El sistema crea las cuentas iniciales `vendedor`, `almacenero`, `dueno` y `admin`, además de `ventas2` y `almacen2`. Las claves de prueba se entregan al titular del proyecto. En el despliegue privado, primero se requiere acceso al Site y luego una cuenta de la aplicación.
 
 | Rol | Acceso |
 | --- | --- |
 | Vendedor | Caja, disponibilidad y precio de venta, comprobantes e historial de sus propias ventas. |
 | Almacenero | Existencias, alertas, ingresos y bajas, y consulta de movimientos. Puede seleccionar un proveedor al registrar un ingreso. |
-| Dueño | Panel, rentabilidad y rotación, administración de productos y proveedores y consulta de existencias. |
+| Dueño | Panel, rentabilidad y rotación, administración de productos y proveedores, consulta de existencias y asistente. |
 | Administrador | Todos los módulos, historial completo, administración de cuentas y registro de actividad. |
 
 Desde **Usuarios**, el administrador puede crear y editar cuentas, asignar roles, restablecer contraseñas y desactivar o reactivar cuentas. Un cambio de rol, usuario, contraseña o estado invalida las sesiones anteriores de esa cuenta. Las contraseñas se almacenan como hashes con una sal individual. Las ventas históricas de demostración se asignan a `vendedor`. Las ventas anteriores sin cuenta asociada siguen disponibles para el administrador.
@@ -39,7 +39,16 @@ npm run build
 | RF-12 y RF-13 | Indicadores, utilidad bruta estimada según el costo promedio registrado, tendencia y rotación de productos por periodo. |
 | RF-15 a RF-18 | Alta y edición de productos y proveedores, con asignación de varios proveedores por producto. |
 | RF-19 a RF-21 | Acceso administrativo completo, gestión de usuarios y roles, y registro de actividad. |
-| RF-14 | Pendiente el agente de IA. |
+| RF-14 | Asistente conversacional basado en reglas para ventas, reposición y promociones. |
+
+## Asistente de recomendaciones
+
+El asistente de Dueño y Administrador ejecuta consultas sobre la misma base que Ventas e Inventario. Funciona con reglas locales, sin API de IA, clave ni cobro por consulta. Las preguntas admiten temas de ventas, reposición y promociones. Se puede seleccionar el periodo y el horizonte de compra o indicarlos en la pregunta.
+
+- Los más vendidos se ordenan por unidades. Los ingresos reflejan los descuentos aplicados.
+- Para reponer, se proyecta el promedio diario al horizonte elegido. La compra sugerida cubre esa demanda y el mínimo de reserva después de descontar las existencias actuales.
+- Las promociones usan pares presentes en al menos dos comprobantes. El combo aplica un descuento de hasta 5 % cuando ambos productos tienen stock por encima del mínimo y el costo registrado deja margen. El chat propone precios y no los cambia.
+- El catálogo inicial añade 22 referencias de ferretería. Si todavía solo hay ventas de demostración, se agregan canastas de ejemplo y el chat las identifica como datos de demostración. Cuando existe actividad operativa, el chat usa esas ventas y el catálogo ampliado se incorpora con stock cero.
 
 El comprobante queda identificado como interno. La emisión tributaria electrónica y otras integraciones se pueden definir en una fase posterior. El prototipo incluye datos ficticios para recorrer los flujos desde el primer acceso.
 

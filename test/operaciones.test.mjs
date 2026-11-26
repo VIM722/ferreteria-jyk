@@ -123,7 +123,7 @@ test('la API aplica la matriz de permisos y limita los datos que entrega por rol
   const product = {sku:'PRUEBA-01',nombre:'Producto de prueba',categoria:'Otros',precio:1500,costo:1000,stock:5,minimo:1}
   assert.equal((await owner('productos','POST',product)).status,201)
   assert.equal((await owner('panel')).data.recientes.length,0)
-  assert.equal((await admin('usuarios')).data.length,4)
+  assert.equal((await admin('usuarios')).data.length,6)
   assert.ok((await admin('actividad')).data.some(entry => entry.accion === 'Producto creado'))
   const first = saleCatalog.productos[0]
   const adminSale = await admin('ventas','POST',sale([line(first)]))
@@ -179,4 +179,64 @@ test('la migración conserva ventas anteriores y asigna las de demostración al 
     rmSync(path,{force:true})
     rmdirSync(directory)
   }
+})
+
+test('el asistente usa los datos activos, calcula reposición y recomienda pares recurrentes', async t => {
+  const { as } = await fixture(t)
+  const owner = await as('dueno')
+  const seller = await as('ventas2')
+  const warehouse = await as('almacen2')
+  assert.equal((await seller('sesion')).data.rol,'vendedor')
+  assert.equal((await warehouse('sesion')).data.rol,'almacenero')
+  assert.equal((await seller('asistente','POST',{mensaje:'Más vendidos'})).status,403)
+  assert.equal((await warehouse('asistente','POST',{mensaje:'Más vendidos'})).status,403)
+  assert.equal((await warehouse('movimientos')).status,200)
+
+  const catalog = (await seller('catalogo')).data.productos
+  assert.equal(catalog.length,36)
+  const nails = catalog.find(row => row.sku === 'FIJ-101')
+  const hammer = catalog.find(row => row.sku === 'HER-005')
+  const sample = (await owner('asistente','POST',{mensaje:'Recomendaciones',dias:7,horizonte:14})).data
+  assert.equal(sample.periodo.demo,true)
+  assert.ok(sample.bloques.find(block => block.tipo === 'promociones').filas.some(pair => pair.juntos >= 2))
+
+  for (let i = 0; i < 2; i++) {
+    const newSale = await seller('ventas','POST',sale([line(nails,2),line(hammer)]))
+    assert.equal(newSale.status,201)
+  }
+  const sales = (await seller('ventas')).data
+  assert.equal(sales.total,2)
+  const firstSeller = await as('vendedor')
+  assert.equal((await firstSeller('ventas/' + sales.filas[0].id)).status,404)
+  const real = (await owner('asistente','POST',{mensaje:'Más vendidos, reposición y promociones en los últimos 7 días',horizonte:60})).data
+  assert.equal(real.periodo.demo,false)
+  assert.equal(real.periodo.comprobantes,2)
+  const [ranking,replenishment,promotions] = real.bloques
+  assert.deepEqual(ranking.filas.map(row => row.unidades),[4,2])
+  const replenishmentNails = replenishment.filas.find(row => row.sku === nails.sku)
+  assert.equal(replenishmentNails.demanda,35)
+  assert.equal(replenishmentNails.pedido,35 + replenishmentNails.minimo - replenishmentNails.stock)
+  assert.equal(promotions.filas.length,1)
+  assert.equal(promotions.filas[0].juntos,2)
+  assert.ok(promotions.filas[0].precioCombo < promotions.filas[0].precioHabitual)
+  const followUp = (await owner('asistente','POST',{mensaje:'¿Y en 2 semanas?',temas:['reposicion']})).data
+  assert.equal(followUp.periodo.horizonte,14)
+  assert.deepEqual(followUp.temas,['reposicion'])
+  const nextWeek = (await owner('asistente','POST',{mensaje:'¿Qué debo comprar la próxima semana?'})).data
+  assert.equal(nextWeek.periodo.horizonte,7)
+})
+
+test('el catálogo ampliado conserva SKUs existentes y no crea ventas de ejemplo con actividad operativa previa', async t => {
+  const { db,as } = await fixture(t)
+  const owner = await as('dueno')
+  db.prepare("INSERT INTO configuracion VALUES ('demo')").run()
+  db.prepare("INSERT INTO productos(sku,nombre,categoria,precio,costo,minimo) VALUES ('FIJ-101','Producto previo','Fijaciones',2200,1800,2)").run()
+  db.prepare("INSERT INTO ventas(solicitud,fecha,cliente,documento,tipo,pago) VALUES ('anterior','2026-11-26','Cliente anterior','','Boleta','Efectivo')").run()
+  const catalog = (await owner('catalogo')).data.productos
+  const existing = catalog.find(row => row.sku === 'FIJ-101')
+  assert.equal(existing.nombre,'Producto previo')
+  assert.equal(existing.precio,2200)
+  assert.equal(catalog.find(row => row.sku === 'FIJ-102').stock,0)
+  const simulated = db.prepare("SELECT count(*) n FROM ventas WHERE solicitud GLOB 'demo-canasta-*'").first()
+  assert.equal(simulated.n,0)
 })

@@ -30,7 +30,7 @@ export function database(path) {
       first: () => db.prepare(sql).get(...args) ?? null,
       all: () => ({ results: db.prepare(sql).all(...args) }),
       run: () => db.prepare(sql).run(...args),
-      execute: () => /^\s*SELECT\b/i.test(sql) ? { results: db.prepare(sql).all(...args) } : { results: [], meta: db.prepare(sql).run(...args) },
+      execute: () => /^\s*(?:SELECT|WITH)\b/i.test(sql) ? { results: db.prepare(sql).all(...args) } : { results: [], meta: db.prepare(sql).run(...args) },
     }
   }
   return { prepare: statement, batch: queries => transaction(() => queries.map(query => query.execute())), close: () => db.close() }
